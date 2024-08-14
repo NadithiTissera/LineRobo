@@ -1,0 +1,259 @@
+#include <NewPing.h> // Sensor lib
+#include <Servo.h> // Servo lib
+#include <AFMotor.h> // Motor lib
+
+
+// Sensor Pins
+#define TRIGGER_PIN A2
+#define ECHO_PIN A3
+#define max_distance 50 // Max distance (cm) the sensor can measure
+
+
+// IR Pins
+#define irLeft A0
+#define irRight A1
+
+
+// Servo class
+Servo servo;
+
+
+// Motor Pins
+int ENA = 6;
+int ENB = 7;
+int IN1 = 5;
+int IN2 = 4;
+int IN3 = 3;
+int IN4 = 2;
+
+
+// Initialize NewPing for the sensor
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, max_distance);
+
+
+// Variables for dis measurements and object avoidance
+int distance = 0; // Dis measured by sensor
+int leftDistance; // Dis measured when servo is pointed left
+int rightDistance; // Dis measured when servo is pointed right
+boolean object; // Determine turning direction for object avoidance
+
+
+void setup() {
+  Serial.begin(9600); // Initialize communications
+
+
+  servo.attach(10); // Servo at pin 10
+  servo.write(90); // Set servo to neutral (90 degrees)
+
+
+  pinMode(irLeft, INPUT);
+  pinMode(irRight, INPUT);
+
+
+  pinMode(ENA, OUTPUT);
+  pinMode(ENB, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+
+
+  // Initialize motors to a speed of 120
+  digitalWrite(IN1,HIGH);
+  digitalWrite(IN2,LOW);
+  analogWrite(ENA, 120);
+ 
+  digitalWrite(IN3,HIGH);
+  digitalWrite(IN4,LOW);
+  analogWrite(ENB, 120);
+}
+
+
+void loop() {
+  // Read IR sensor to detect obstacles
+  if (digitalRead(irLeft) == 0 && digitalRead(irRight) == 0 ) {
+    objectAvoid(); // No obstacles, continue following line
+  }
+  else if (digitalRead(irLeft) == 0 && digitalRead(irRight) == 1 ) {
+    objectAvoid();
+    Serial.println("TL");
+    moveLeft(); // Obstacle on right, turn left
+  }
+  else if (digitalRead(irLeft) == 1 && digitalRead(irRight) == 0 ) {
+    objectAvoid();
+    Serial.println("TR");
+    moveRight(); // Obstacle on left, turn right
+  }
+  else if (digitalRead(irLeft) == 1 && digitalRead(irRight) == 1 ) {
+    Stop(); // Both sides have obstacles, stop robot
+  }
+}
+
+
+void objectAvoid() {
+  distance = getDistance(); // Get dis from sensor
+
+
+  if (distance <= 15) { // If dis is less than or equal to 15 cm, stop robot
+    Stop();
+    Serial.println("Stop");
+
+
+    lookLeft(); // Check dis when servo is left & right
+    lookRight();
+    delay(100);
+
+
+    if (rightDistance <= leftDistance) {  // Compare dis to decide direction
+      object = true; // Preference to turn left
+      turn();
+      Serial.println("moveLeft");
+    } else {
+      object = false; // Preference to turn right
+      turn();
+      Serial.println("moveRight");
+    }
+    delay(100);
+  }
+  else {
+    Serial.println("moveforword");
+    moveForward();
+  }
+}
+
+
+int getDistance() {
+  delay(50);
+  int cm = sonar.ping_cm(); // Get dis from sensor
+
+
+  if (cm == 0) { // If no distance detected, default to 100
+    cm = 100;
+  }
+  return cm;
+}
+
+
+int lookLeft() {
+  servo.write(150); // Point servo left (150 degrees)
+  delay(500);
+  leftDistance = getDistance();
+  delay(100);
+  servo.write(90); // Reset servo neutral
+  Serial.print("Left:");
+  Serial.print(leftDistance);
+  return leftDistance;
+}
+
+
+int lookRight() {
+  servo.write(30); // Point servo right (30 degrees)
+  delay(500);
+  rightDistance = getDistance();
+  delay(100);
+  servo.write(90); // Reset servo neutral
+  Serial.print("   ");
+  Serial.print("Right:");
+  Serial.println(rightDistance);
+  return rightDistance;
+}
+
+
+void Stop() {
+  digitalWrite(IN1, LOW); // Stop motors
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+
+
+  analogWrite(ENA, 0); // Set speed to 0
+  analogWrite(ENB, 0);
+}
+
+
+void moveForward() {
+  // Move motors at 120 speed
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+
+
+  analogWrite(ENA, 120);
+  analogWrite(ENB, 120);
+}
+
+
+void moveBackward() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+
+
+  analogWrite(ENA, 120);
+  analogWrite(ENB, 120);
+}
+
+
+void turn() {
+  if (object == false) {  // If object flag is false (prefer to turn right)
+    Serial.println("turn Right");
+    moveLeft();
+    delay(700);
+    moveForward();
+    delay(800);
+    moveRight();
+    delay(900);
+
+
+    if (digitalRead(irRight) == 1) { // Check if right IR sensor detects no obstacle
+      loop(); // Call loop() to recheck sensor values
+    } else {
+      moveForward(); // Move forward if right IR sensor still detects an obstacle
+    }
+  }
+  else { // If object flag is true (prefer to turn left)
+    Serial.println("turn left");
+    moveRight();
+    delay(700);
+    moveForward();
+    delay(800);
+    moveLeft();
+    delay(900);
+    if (digitalRead(irLeft) == 1) { // Check if left IR sensor detects no obstacle
+      loop(); // Call loop() to recheck sensor values
+    } else {
+      moveForward(); // Move forward if left IR sensor still detects an obstacle
+    }
+  }
+}
+
+
+void moveRight() {
+  // Motor 1/2 forward, Motors 3/4 backwards
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+
+
+  analogWrite(ENA, 120);
+  analogWrite(ENB, 120);
+}
+
+
+void moveLeft() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+
+
+  analogWrite(ENA, 120);
+  analogWrite(ENB, 120);
+}
+
+
+
+
